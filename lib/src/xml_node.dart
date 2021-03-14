@@ -1,3 +1,5 @@
+enum TAG_TYPE { TAG_START, TAG_SELF_CLOSING }
+
 class XMLNode {
   XMLNode? parent;
   String? tag;

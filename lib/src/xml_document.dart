@@ -4,11 +4,14 @@ import 'dart:io';
 import 'exceptions.dart';
 import 'xml_attribute.dart';
 import 'xml_node.dart';
-import 'xml_node.dart';
+
 
 class XMLDocument {
   XMLNode? root;
+  String? version;
+  String? encoding;
 
+  // Helper function to remove unwanted whitespaces and new lines
   String _cleanString(String buffString) {
     buffString = buffString.trim();
     if (buffString.contains("\n")) {
@@ -30,6 +33,62 @@ class XMLDocument {
     XMLAttribute currentAttribute = XMLAttribute();
 
     var i = 0;
+
+    TAG_TYPE parseAttributes() {
+      currentAttribute = XMLAttribute();
+
+      /// Check for attributes in opening tag. Till end of opening tag
+      while (xmlString[i] != '>') {
+        lexBuffer += xmlString[i++];
+
+        // Start tag
+        if (xmlString[i] == " " && currentNode!.tag == null) {
+          currentNode.tag = _cleanString(lexBuffer);
+          lexBuffer = '';
+          i++;
+          continue;
+        }
+
+        // Get attribute key
+        if (xmlString[i] == "=") {
+          currentAttribute.key = _cleanString(lexBuffer);
+          lexBuffer = '';
+          continue;
+        }
+
+        // Getting value of attribute
+        if (xmlString[i] == '"' || xmlString[i] == "'") {
+          String attributeValueStartCharacter = xmlString[i];
+
+          /// Attribute value without key
+          if (currentAttribute.key == null) {
+            throw InvalidXMLException("Attribute value has no key");
+          } else {
+            lexBuffer = '';
+            i++;
+            while (xmlString[i] != attributeValueStartCharacter) {
+              lexBuffer += xmlString[i++];
+            }
+            currentAttribute.value = _cleanString(lexBuffer);
+
+            currentNode!.attributes[_cleanString(currentAttribute.key!)] =
+                _cleanString(currentAttribute.value!);
+            lexBuffer = '';
+            i++;
+          }
+          continue;
+        }
+
+        if (xmlString[i - 1] == "/" && xmlString[i] == ">") {
+          if (currentNode!.tag == null) {
+            currentNode.tag = _cleanString(lexBuffer.substring(0,lexBuffer.length -1)); // Remove the "/" from lex buffer
+          }
+          return TAG_TYPE.TAG_SELF_CLOSING;
+        }
+      }
+
+      return TAG_TYPE.TAG_START;
+    }
 
     while (i < xmlString.length) {
       /// Checks opening bracket. For starting and ending tag
@@ -77,53 +136,38 @@ class XMLDocument {
           continue;
         }
 
+        /// Declaration Tags
+        if (xmlString[i + 1] == '?') {
+          while (xmlString[i] != ' ' && xmlString[i] != ">") {
+            lexBuffer += xmlString[i++];
+          }
+          if (lexBuffer == "<?xml") {
+            i++;
+            lexBuffer = '';
+            parseAttributes();
+            lexBuffer = '';
+            i++; // Skip ending '?>'
+
+            if (currentNode!.attributes.containsKey("version")) {
+              version = currentNode.attributes["version"];
+            }
+
+            if (currentNode.attributes.containsKey("encoding")) {
+              encoding = currentNode.attributes["encoding"];
+            }
+            continue;
+          }
+        }
+
         // New current node and settings it's parent to previous currentNode
         currentNode = XMLNode(currentNode);
 
         i++;
-        currentAttribute = XMLAttribute();
 
-        /// Check for attributes in opening tag. Till end of opening tag
-        while (xmlString[i] != '>') {
-          lexBuffer += xmlString[i++];
-
-          // Start tag
-          if (xmlString[i] == " " && currentNode.tag == null) {
-            currentNode.tag = _cleanString(lexBuffer);
-            lexBuffer = '';
-            i++;
-            continue;
-          }
-
-          // Get attribute key
-          if (xmlString[i] == "=") {
-            currentAttribute.key = _cleanString(lexBuffer);
-            lexBuffer = '';
-            continue;
-          }
-
-          // Getting value of attribute
-          if (xmlString[i] == '"' || xmlString[i] == "'") {
-            String attributeValueStartCharacter = xmlString[i];
-
-            /// Attribute value without key
-            if (currentAttribute.key == null) {
-              throw InvalidXMLException("Attribute value has no key");
-            } else {
-              lexBuffer = '';
-              i++;
-              while (xmlString[i] != attributeValueStartCharacter) {
-                lexBuffer += xmlString[i++];
-              }
-              currentAttribute.value = _cleanString(lexBuffer);
-
-              currentNode.attributes[currentAttribute.key!] =
-                  currentAttribute.value!;
-              lexBuffer = '';
-              i++;
-            }
-            continue;
-          }
+        if (parseAttributes() == TAG_TYPE.TAG_SELF_CLOSING) {
+          currentNode = currentNode.parent;
+          i++;
+          continue;
         }
 
         if (currentNode.tag == null) {
